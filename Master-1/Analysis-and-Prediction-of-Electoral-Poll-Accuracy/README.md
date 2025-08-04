@@ -1,0 +1,2 @@
+# Data Sampling and Data Communication
+This project aims to analyze electoral polls and their results to evaluate their accuracy and understand the challenges they present, particularly in the context of far-right candidates. It consists of three main parts: a theoretical analysis of polls and their methodologies, a data analysis with visualizations to assess poll accuracy, and an interpretation of the results with recommendations to improve their precision. The expected deliverable includes a concise written report and up to three graphs illustrating the key findings.

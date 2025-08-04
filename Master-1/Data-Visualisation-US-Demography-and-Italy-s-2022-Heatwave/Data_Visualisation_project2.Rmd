@@ -1,0 +1,604 @@
+---
+title: 'Project 2: Heatwave analysis for Italy'
+author: "ADJENIA Danélius; SABI DJESSOU Bana nadege; SODJINOU Hippolyte"
+output: 
+  html_document:
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+---
+
+
+Objective: We the examine consequences of the summer 2022 heatwave for Italy.\\
+
+This project is loosely based on Ballester et al. (2023) who conduct a quantitative analysis of the mortality-temperature relationship using the NUTS3 spatial resolution (both for mortality figures and ERA5 temperature scans). Below, we use mortality data for the whole of Italy, so results will differ from those of Ballester et al. (2023).\\
+
+   • Ballester , J. et al. (2023). Heat-related mortality in Europe during the summer of 2022. Nature Medicine.
+   
+   
+   **Important: bolcks with "# Code in Python" are in Python**
+   
+```{r results='hide'}
+if(!require(tidyverse))install.packages("tidyverse") 
+if(!require(ISOweek))install.packages("ISOweek") 
+if(!require(lubridate))install.packages("lubridate") 
+if(!require(aweek))install.packages("aweek") 
+if(!require(glue))install.packages("glue") 
+if(!require(binsreg))install.packages("binsreg") 
+if(!require(reticulate)) install.packages("reticulate")
+
+```
+
+
+```{r results='hide'}
+library(lubridate)  # for: day, year etc. 
+library(aweek)
+library(tidyverse)
+library(ISOweek)
+library(glue)
+library(binsreg)
+library(reticulate)
+
+
+```
+
+   
+   
+```{r eval=FALSE}
+# If it is already configured, please restart R and remove "eval=FALSE, include=FALSE"
+# The Python executable path
+use_python("C:/Users/sodji/anaconda3/python.exe", required = TRUE)
+
+```
+   
+
+```{r}
+# Check Python configuration
+py_config()
+```
+
+
+   
+```{r eval=FALSE}
+# For the first compilation, remove "eval=FALSE"
+py_install("cdsapi")
+```
+  
+  
+  
+```{r eval=FALSE}
+py_install(c("xarray", "cartopy", "pandas", "urllib3"))
+
+```
+   
+   
+```{python results='hide'}
+# Code in Python
+# Libraries for working with multidimensional arrays
+import numpy as np
+import xarray as xr
+
+# Libraries for plotting and visualising data
+import matplotlib.path as mpath
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import cartopy.feature as cfeature
+import pandas as pd
+# Disable warnings for data download via API
+import urllib3 
+
+urllib3.disable_warnings()
+
+```
+
+
+<h2> 1 Preliminaries: The temperature data for Italy </h2>
+
+
+
+```{python}
+# Code in Python
+# Reading the file and extracting the information
+with open ("C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Code/API_ERA5.txt", 'r') as f:
+    lines = f.readlines()
+
+# Initializing variables
+URL = None
+KEY = None
+
+# Traversing each line to extract the URL and key
+for line in lines:
+    if line.startswith("url:"):
+        URL = line.split(":", 1)[1].strip()
+    elif line.startswith("key:"):
+        KEY = line.split(":", 1)[1].strip()
+
+# Verification of extraction
+if URL is None or KEY is None:
+    raise ValueError("The URL or key was not found in the file.")
+
+```
+
+
+```{python}
+# Code in Python
+DATADIR = 'C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/'
+```
+
+
+
+```{python eval=FALSE}
+# Code in Python
+# For the first compilation, remove "eval=FALSE"
+# CDS API
+import cdsapi
+
+## Get the Data
+
+c = cdsapi.Client(url=URL, key=KEY)
+c.retrieve(
+    'reanalysis-era5-single-levels',
+    {
+        'product_type': 'reanalysis',
+        'data_format': 'netcdf_legacy',
+        'variable': '2m_temperature',
+        'year': [
+            '2015', '2016', '2017',
+            '2018', '2019', '2020',
+            '2021', '2022', '2023',
+        ],
+        'month': [
+            '01', '02', '03',
+            '04', '05', '06',
+            '07', '08', '09',
+            '10', '11', '12',
+        ],
+        'day': [
+            '01', '02', '03',
+            '04', '05', '06',
+            '07', '08', '09',
+            '10', '11', '12',
+            '13', '14', '15',
+            '16', '17', '18',
+            '19', '20', '21',
+            '22', '23', '24',
+            '25', '26', '27',
+            '28', '29', '30',
+        ],
+        'time': [
+            '00:00', '01:00', '02:00',
+            '03:00', '04:00', '05:00',
+            '06:00', '07:00', '08:00',
+            '09:00', '10:00', '11:00',
+            '12:00', '13:00', '14:00',
+            '15:00', '16:00', '17:00',
+            '18:00', '19:00', '20:00',
+            '21:00', '22:00', '23:00',
+        ],
+        'area': [46,9,37,18.5,],
+    },
+    f'{DATADIR}Italy_hourly.nc')
+```
+
+
+```{python eval=FALSE}
+! pip install netcdf4 scipy
+
+```
+
+
+```{r}
+reticulate::py_install("netcdf4", method = "conda")
+
+```
+
+
+
+```{python}
+# Code in Python
+filename = DATADIR + "Italy_hourly.nc"
+ds = xr.open_dataset(filename)
+
+da = ds['t2m']      # surface temp. at 2 meters
+t2m_C = da - 273.15 # convert from Kelvin to Celsius
+
+del ds, da
+```
+
+
+
+```{python}
+# Code in Python
+t2m_C
+```
+
+
+
+```{python}
+# Code in Python
+# We start by resampling it into weekly data
+t2m_weekly = t2m_C.resample(time="1W").mean()
+```
+
+
+
+```{python}
+# Code in Python
+t2m_weekly
+```
+
+
+**Week corresponding to 03.08.2022**
+
+
+```{python}
+# Code in Python
+# Set the date as a string (format day.month.year)
+date_str = "03.08.2022"
+
+# Convert the string to a datetime object by specifying the format
+date = pd.to_datetime(date_str, format="%d.%m.%Y")
+
+# Use isocalendar() to get the ISO week number
+week_number = date.isocalendar().week
+
+print(f"The date {date_str} corresponds to the week {week_number}.")
+```
+
+```{python}
+# Code in Python
+t2m_weekly_mean = t2m_weekly.groupby(t2m_weekly.time.dt.isocalendar().week).mean()
+
+```
+
+
+```{python}
+# Code in Python
+t2m_weekly_mean
+```
+
+
+
+```{python}
+# Code in Python
+print(f"Minimal longitude: {t2m_weekly_mean.longitude.min()}")
+print(f"Maximal longitude: {t2m_weekly_mean.longitude.max()}")
+print(f"Minimal latitude: {t2m_weekly_mean.latitude.min()}")
+print(f"Maximal latitude: {t2m_weekly_mean.latitude.max()}")
+```
+   
+```{python}
+# Code in Python
+fig_dir = 'C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/'
+```
+   
+   
+```{python}
+# Code in Python
+keep_week = 31
+fig, ax = plt.subplots(1, 1, figsize = (15, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+im = plt.pcolormesh(t2m_weekly_mean.longitude, 
+                    t2m_weekly_mean.latitude,
+                    t2m_weekly_mean.sel(week = keep_week), 
+                    cmap='RdBu_r', 
+                    vmin=t2m_weekly_mean.sel(week = keep_week).min(), 
+                    vmax=t2m_weekly_mean.sel(week = keep_week).max() ) 
+ax.set_title('Mean temperatures on 03.08.2022', fontsize=16)
+ax.gridlines(draw_labels=True, linewidth=1, color='gray', alpha=0.5, linestyle='--') 
+ax.coastlines(color='black')
+ax.set_extent([9,18.5,37,46], crs=ccrs.PlateCarree())
+cbar = plt.colorbar(im,fraction=0.05, pad=0.04)
+cbar.set_label('temperature (°C)') 
+
+fig.tight_layout()
+fig.savefig(f"{fig_dir}Output/map_Italy_August2022.png", bbox_inches='tight')
+plt.show()
+```
+
+This map shows the average temperatures in Italy on August 3, 2022. We note intense heat over the majority of the territory with values between 22°C and 28°C.  The hottest regions (dark red) are visible in the south-central part of the peninsula and in Sicily, where temperatures reach almost 28°C.  A few cooler areas (light blue) appear occasionally in the north, especially in the Alpine region, with temperatures around 20°C.
+
+
+
+```{python}
+# Code in Python
+# aggregate local measures
+weights = np.cos(np.deg2rad(t2m_weekly))
+weights = weights.fillna(0)
+weights.name = "weights"
+t2m_weekly_mean_weighted = t2m_weekly.weighted(weights)
+Italy_t2m = t2m_weekly_mean_weighted.mean(["longitude", "latitude"])
+```
+   
+   
+```{python}
+# Code in Python
+Italy_t2m
+```
+   
+   
+   
+```{python}
+# Code in Python
+df = Italy_t2m.to_dataframe()
+df = df.reset_index()  # convert multi-index to variable
+# this works since the index values are unique (or call reset_index()) !!
+df['week'] = df['time'].dt.isocalendar().week
+df['year'] = df['time'].dt.year
+# Drop the column 'time'
+df.drop('time', axis=1, inplace=True)
+df = df[['year', 'week', 't2m']]
+df_sorted = df.sort_values(by=["year", "week"], ascending=[True, True])
+df_sorted.to_csv(DATADIR+"Italy_week_temperature.csv", index=False)
+```
+   
+```{python}
+# Code in Python
+df_sorted
+```
+   
+
+
+Loading the csv-file of the temperature data, and visualise the temperature data
+
+
+```{r}
+Data_dir = "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/"
+
+Italy_week_temperature <- read_csv(paste0(Data_dir,"Data/Italy_week_temperature.csv"))
+
+```
+
+
+```{r}
+glimpse(Italy_week_temperature)
+```
+
+**Identify the weeks correspond to the start date and the end date for the summer in 2022.**
+
+```{python}
+# Code in Python
+# Set the date as a string (format day.month.year)
+date_str1 = "01.06.2022"
+date_str2 = "31.08.2022"
+
+# Convert the string to a datetime object by specifying the format
+date1 = pd.to_datetime(date_str1, format="%d.%m.%Y")
+date2 = pd.to_datetime(date_str2, format="%d.%m.%Y")
+
+# Use isocalendar() to get the ISO week number
+week_number1 = date1.isocalendar().week
+week_number2 = date2.isocalendar().week
+
+
+print(f"The date {date_str1} correspond to the week {week_number1}.")
+print(f"The date {date_str2} correspond to the week {week_number2}.")
+
+```
+
+
+
+```{r}
+#  Create a date column from year and week
+Italy_week_temperature_all <- Italy_week_temperature %>%
+  mutate(
+    date = ISOweek2date(
+      sprintf("%4d-W%02d-1", year, week)  # ex : "2022-W03-1"
+    )
+  )
+
+# Define the start/end of summer 2022 (example: weeks 22 to 35)
+#    To add a highlight to the figure
+summer_2022_start <- ISOweek2date("2022-W22-1")  # week 22
+summer_2022_end   <- ISOweek2date("2022-W35-7")  # week 35
+
+#  Plot the full time series and highlight summer 2022
+ggplot(Italy_week_temperature_all, aes(x = date, y = t2m)) +
+  # Curve
+  geom_line(color = "blue", size = 0.7) +
+  # Greyed out band for summer 2022
+  annotate(
+    "rect",
+    xmin = summer_2022_start,
+    xmax = summer_2022_end,
+    ymin = -Inf, ymax = Inf,
+    fill = "gray",
+    alpha = 0.8
+  ) +
+  labs(
+    title = "Temperature (2015 - 2023)",
+    x = "Date",
+    y = "Temperature (°C)"
+  ) +
+  theme_bw()
+
+```
+
+
+This graph representing the evolution of average temperatures in Italy from 2015 to 2023, shows us a clear seasonal cycle with summer peaks reaching around 25-28°C and winter lows dropping to 5-10°C.  There is a certain consistency in the annual temperature maximums, with several summers with peaks exceeding 27°C.  The grey area in 2022 highlights a particular period: that of the summer 2022 heat wave, which begins in June and ends at the end of August.
+
+
+```{r}
+
+# Filter to keep only Summer 2022 (weeks 22 to 35)
+Italy_summer_2022 <- Italy_week_temperature %>%
+  filter(year == '2022', week >= 22, week <= 35)
+
+
+Italy_summer_2022 <- Italy_summer_2022 %>%
+  mutate(
+    # Creates the string in the format "YYYY-Www-1"
+    iso_str = sprintf("%s-W%02d-1", year, week),
+    date = ISOweek2date(iso_str)
+  )
+
+# Visualize the time series for summer 2022
+ggplot(Italy_summer_2022, aes(x = date, y = t2m)) +
+  geom_line(color = "blue", size = 0.7) +
+  labs(
+    title = "Focus on the summer 2022 period (June to August)",
+    x = "Month",
+    y = "Temperature (°C)"
+  ) +
+  theme_bw()
+
+```
+
+This graph details the average temperatures in Italy during the summer of 2022 and reveals a gradual increase from June (around 22.5°C) to a peak in late July-early August reaching almost 27°C.  There were two distinct heat waves: the first in mid-July (26.3°C) followed by a slight decrease, then a second more intense and prolonged one at the end of July-beginning of August, before a steady decrease until September.
+
+
+<h2> 2 The mortality data </h2>
+
+
+
+```{r}
+
+word_mortality <- read_csv(paste0(Data_dir,"Data/world_mortality.csv"))
+glimpse(word_mortality)
+
+```
+
+
+
+```{r}
+# Function of converting a combination of year and period number (week or month) to actual date
+# Defining the get_date() function using ISOweek2date()
+get_date <- function(week, year) {
+    # Create a string in the format "YYYY-Www-1"
+    iso_str <- sprintf("%d-W%02d-1", year, week)
+    # Convert string to date
+    ISOweek2date(iso_str)}
+
+country <- "Italy"   ## iso3c == "ITA"
+
+word_mortality %>% 
+   filter(iso3c == "ITA") %>%
+   select(-c(iso3c,country_name,time_unit)) %>%
+   rename(mortality=deaths, week=time) %>%
+   mutate(start_date = get_date(week=week,year=year)) ->
+   mortality
+
+glimpse(mortality)
+```
+
+<h2> 3 A simple time-series model of excess mortality </h2>
+
+
+```{r}
+
+#  Filter data up to March 1, 2020
+mortality_ref <- mortality %>%
+  filter(start_date < as.Date("2020-03-01"))
+
+# Building a linear model
+#    - factor(week) to have a fixed effect (a "dummification" of the week)
+#    - year as numeric (for a linear trend) or factor(year) (for a fixed effect per year)
+mod <- lm(mortality ~ factor(week) + year, data = mortality_ref)
+
+# Check a model summary
+summary(mod)
+
+```
+
+
+<h3> Predicting for the summer of 2022 and calculating excess mortality </h3>
+
+```{r}
+
+# Extract mortality for the summer of 2022 (dates to be adapted according to the desired period)
+mortality_2022 <- mortality %>%
+  filter(year == 2022, 
+         start_date >= as.Date("2022-06-01"), 
+         start_date <= as.Date("2022-08-31"))  # for example until the end of September
+
+# Apply your linear model prediction
+mortality_2022 <- mortality_2022 %>%
+  mutate(predicted = predict(mod, newdata = mortality_2022),
+         excess    = mortality - predicted)  # excess mortality
+
+```
+
+
+**predicted** : the mortality predicted by your model.
+
+**excess** : the observed difference – predicted. A positive value indicates more deaths than the model would have predicted, and therefore potentially excess mortality.
+
+
+**Visualisation**
+
+
+```{r}
+ggplot(mortality_2022, aes(x = start_date, y = excess)) +
+  geom_line(color = "red", size = 0.7) +
+  labs(
+    title    = "Italy : Estimated excess mortality in summer 2022",
+    x        = "Date",
+    y        = "Excess deaths"
+  ) +
+  theme_bw()
+```
+
+The graph shows the evolution of excess mortality (excess deaths compared to forecasts) in Italy during the summer of 2022, with two distinct peaks. The first peak in July reached about 2800 excess deaths, followed by a temporary decline, then a second much larger peak at the end of July/beginning of August culminating at about 4400 deaths. This excess mortality clearly coincides with the periods of high temperatures observed in the previous graphs, particularly with the intense heat wave at the end of July/beginning of August when temperatures exceeded 27°C.
+
+
+```{r}
+total_excess_deaths = sum(mortality_2022$excess)
+print(glue("Total number of excess deaths in Italy in summer of 2022: {total_excess_deaths}"))
+
+```
+
+
+
+<h2> 4 The mortality and temperature relationship </h2>
+
+
+```{r}
+glimpse(Italy_week_temperature)
+```
+
+
+```{r}
+glimpse(mortality)
+```
+
+
+```{r}
+mortality %>%
+    left_join(Italy_week_temperature, by=c("year", "week")) ->
+    mortality_Italy
+
+glimpse(mortality_Italy)
+```
+
+```{r}
+est2 <- binsreg(mortality,t2m, data=data.frame(mortality_Italy), nbins=10, line=c(1,0))
+#est2$bins_plot
+
+```
+
+
+This graph illustrates the relationship between temperature at 2 metres above the ground (t2m in °C on the X axis) and mortality in Italy (Y axis) and shows a curve in the shape of a J or U. Mortality initially decreases when temperatures rise from 5°C to about 22°C, reaching its minimum around 20-22°C, and then rises significantly when temperatures exceed 22°C, suggesting an increase in mortality during extreme heat events.
+
+
+<h2> Session Information </h2>
+
+```{r results='hide'}
+if (!require(sessioninfo)) install.packages("sessioninfo")
+
+library(sessioninfo)
+```
+
+
+
+
+```{r}
+platform_info()
+```
+
+
+
+
+
+
+
+

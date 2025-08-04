@@ -1,0 +1,766 @@
+
+---
+title: "Data Visualisation"
+subtitle: "Project I: NHGIS and the US county population"
+author: "ADJENIA Danélius; SABI DJESSOU Bana nadege; SODJINOU Hippolyte"
+output: 
+  html_document:
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r results='hide'}
+if(!require(tidyverse))install.packages("tidyverse") 
+if(!require(gridExtra))install.packages("gridExtra") 
+if(!require(tmap))install.packages("tmap") 
+if(!require(sf))install.packages("sf") 
+if(!require(ipumsr))install.packages("ipumsr") 
+if(!require(purrr))install.packages("purrr") 
+if(!require(scales)) install.packages("scales")
+if(!require(leaflet)) install.packages("leaflet")
+if(!require(shiny)) install.packages("shiny")
+if(!require(scales)) install.packages("scales")
+
+```
+
+```{r results='hide'}
+library(tidyverse) 
+library(gridExtra) 
+library(ipumsr)
+library(dplyr)
+library(purrr)
+library(sf)
+library(tmap)
+library(scales)
+library(leaflet)
+library(shiny)
+library(scales)
+```
+
+#<h2>1 Preliminaries </h2>
+
+US counties's  shapefile
+
+```{r eval=FALSE}
+# Set API environnment
+
+mykey <- readLines("ipums_key.txt")
+
+# Save key in .Renviron for use across sessions
+set_ipums_api_key(mykey, save = TRUE)
+
+```
+
+
+```{r eval=FALSE}
+# Spaciale file
+
+
+# "tl": Census Bureau TIGER/Line
+nhgis_ext_1 <- define_extract_nhgis(
+  description = "County shapefiles (2023)",
+  shapefiles = "us_county_2023_tl2023"
+)
+nhgis_ext_submitted <- submit_extract(nhgis_ext_1)
+nhgis_ext_complete <- wait_for_extract(nhgis_ext_submitted)
+filepath <- download_extract(nhgis_ext_submitted,
+                             download_dir = "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/")
+
+```
+
+
+
+```{r eval=FALSE}
+# "tl": Census Bureau TIGER/Line
+nhgis_ext <- define_extract_nhgis(
+  description = "County shapefiles (2020)",
+  shapefiles = "us_county_2020_tl2020"
+)
+```
+
+```{r eval=FALSE}
+nhgis_ext_submitted <- submit_extract(nhgis_ext)
+
+nhgis_ext_complete <- wait_for_extract(nhgis_ext_submitted)
+
+```
+
+```{r eval=FALSE}
+## Download the dataset
+filepath <- download_extract(nhgis_ext_submitted,
+                            download_dir = "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/")
+
+```
+
+```{r}
+map_dir <- "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/"
+shape_us <- read_ipums_sf(paste0(map_dir,"nhgis0002_shape.zip"))
+
+```
+
+```{r}
+# contiguous states / counties 
+shape_us %>% 
+  mutate(STATEFP = as.integer(STATEFP)) %>%
+  filter(STATEFP < 57) %>% 
+  filter(!(STATEFP %in% c(2,15))) ->
+  shape_us
+
+```
+
+```{r}
+shape_us # 3,108 x 21
+```
+
+
+
+```{r}
+glimpse(shape_us)
+
+```
+
+
+
+<h3> NHGIS Time Series data </h3>
+
+
+```{r eval=FALSE}
+# Time series tables do not contain individual data tables, 
+#   but do require a geographic level selection, and allow an optional selection of years
+
+nhgis_ext <- define_extract_nhgis(
+  description = "CW8: Persons by Sex by Race at tract level",
+  time_series_tables = tst_spec(
+    "CW8",
+    geog_levels = c("county"),
+    years = c("2010", "2000")
+ )
+)
+nhgis_ext_submitted <- submit_extract(nhgis_ext)
+nhgis_ext_complete <- wait_for_extract(nhgis_ext_submitted)
+filepath <- download_extract(nhgis_ext_submitted,
+                             download_dir = "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/")
+
+```
+
+
+
+```{r}
+
+data_by_race <- read_csv(paste0(map_dir,"nhgis0003_csv/nhgis0003_ts_geog2010_county.csv"))
+```
+
+```{r}
+data_by_race %>%
+  filter(GEOGYEAR == 2010) ->
+  data_by_race
+```
+
+
+
+```{r}
+glimpse(data_by_race)
+```
+
+
+```{r}
+data_by_race <- data_by_race %>%
+  mutate(
+    pop_white   = CW8AA2010 + CW8AG2010,
+    pop_black   = CW8AB2010 + CW8AH2010,
+    pop_native  = CW8AC2010 + CW8AI2010, # American Indian and Alaska Native
+    pop_asian   = CW8AD2010 + CW8AJ2010, # Asian and Pacific Islander
+    pop_two_more= CW8AF2010 + CW8AL2010, #Two or More Races
+    pop_other   = CW8AE2010 + CW8AK2010, # Other Race
+    total_pop   = pop_white + pop_black + pop_native + pop_asian + pop_two_more + pop_other
+  )
+```
+
+Description: <br>
+CW8AA2010:   2010: Persons: Male ~ White (single race) <br>
+CW8AG2010:   2010: Persons: Female ~ White (single race) <br>
+CW8AB2010:   2010: Persons: Male ~ Black or African American (single race) <br>
+CW8AH2010:   2010: Persons: Female ~ Black or African American (single race) <br>
+CW8AC2010:   2010: Persons: Male ~ American Indian and Alaska Native (single race) <br>
+CW8AI2010:   2010: Persons: Female ~ American Indian and Alaska Native (single race) <br>
+CW8AD2010:   2010: Persons: Male ~ Asian and Pacific Islander (single race) <br>
+CW8AJ2010:   2010: Persons: Female ~ Asian and Pacific Islander (single race) <br>
+CW8AE2010:   2010: Persons: Male ~ Some Other Race (single race) <br>
+CW8AK2010:   2010: Persons: Female ~ Some Other Race (single race) <br>
+CW8AF2010:   2010: Persons: Male ~ Two or More Races <br>
+CW8AL2010:   2010: Persons: Female ~ Two or More Races <br>
+
+
+```{r}
+glimpse(data_by_race)
+```
+
+
+```{r}
+data_by_race <- data_by_race %>%
+  select(
+    GISJOIN,GEOGYEAR,STATE, 
+    (ncol(data_by_race) - 6):ncol(data_by_race)   # Select the last 7 columns
+  )
+```
+
+
+
+```{r}
+# Perform the spatial join
+shape_us_pop_2010 <- shape_us %>%
+  left_join(data_by_race, by = "GISJOIN")
+```
+
+
+```{r}
+glimpse(shape_us_pop_2010)
+```
+
+#<h2> 2 County population barplots </h2>
+
+
+
+
+```{r}
+#write_csv(shape_us_pop_2010, file=paste0(map_dir,"shape_us_pop_2010.csv"))
+```
+
+```{r}
+# Filter to keep only Los Angeles County
+la_data <- shape_us_pop_2010 %>%
+  filter(NAMELSAD == "Los Angeles County")
+```
+
+
+```{r}
+la_long <- la_data %>%
+  select(pop_other, pop_native, pop_black,  pop_asian, pop_white, pop_two_more, total_pop) %>%
+  pivot_longer(
+    cols = c(pop_other, pop_native, pop_two_more, pop_black, pop_asian, pop_white),
+    names_to = "race",
+    values_to = "population"
+  ) %>%
+  # Calculate the share of each breed in the total population
+  mutate(
+    share = population / total_pop[1]   # [1] Because total_pop is the same for each line
+  )
+```
+
+
+```{r}
+## Dataframe that contain the race name
+
+data_race_name <- data.frame(
+  race = c("pop_other", "pop_two_more", "pop_native" , "pop_black", "pop_asian", "pop_white"),
+  race_name = c("other race", "two or more race", "native race", "black race", "asian race", "white race"))
+
+```
+
+
+```{r}
+data_race_name
+```
+
+
+```{r}
+## Merge the la_long with data_race_name
+
+la_long_race <- left_join(la_long, data_race_name, by = c("race"))
+la_long_race
+```
+
+
+```{r}
+# Set the desired order for the variable "race_name"
+la_long_race <- la_long_race %>%
+  mutate(race_name = factor(race_name,
+                            levels = c("white race","asian race", "black race", "two or more race", "native race", "other race")))
+```
+
+
+
+```{r}
+# Create the chart
+p1 <- ggplot(la_long_race, aes(x = race_name, y = population, fill = race_name)) +
+  geom_col() +
+  # Labels, axes & title
+  labs(
+    title = "county: Los Angeles",
+    x = NULL,
+    y = "population"
+  ) +
+  # Manual Color Palette
+  scale_fill_manual(values = c(
+    "white race"  = "#f46f63", # salmon
+    "asian race"  = "#00b85b", # green
+    "black race"  = "#af9f10", # brown/olive
+    "two or more race" = "green", # darkgreen
+    "native race" = "#0096b2", # blue
+    "other race"  = "#ea65f5"  # rose
+  )) +
+  coord_flip() +
+  # Clean theme + no caption
+  theme_bw() +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.major.x = element_line(color = "grey70", linewidth = 0.1), # Major vertical lines
+    panel.grid.minor.x = element_line(color = "grey90", linewidth = 0.1), # Minor vertical lines
+    panel.grid.major.y = element_line(color = "grey70", linewidth = 0.1),
+    panel.grid.minor.y = element_line(color = "grey90", linewidth = 0.1),
+    legend.position = "none"
+  ) +
+  geom_text(aes(y = 80000, x = race_name, label = race_name, hjust = 0), color = "black", size = 5) # add the text
+
+```
+
+
+
+
+
+```{r}
+p2 <- ggplot(la_long_race, aes(x = race_name, y = share, fill = race_name)) +
+  geom_col() +
+  # Labels, axes & title
+  labs(
+    title = "",
+    x = NULL,
+    y = "population share"
+  ) +
+  # Manual Color Palette
+  scale_fill_manual(values = c(
+    "white race"  = "#f46f63", # salmon
+    "asian race"  = "#00b85b", # green
+    "black race"  = "#af9f10", # brown/olive
+    "two or more race" = "green", # darkgreen
+    "native race" = "#0096b2", # blue
+    "other race"  = "#ea65f5"  # rose
+  )) +
+  scale_y_continuous(labels = percent) +
+  coord_flip() +
+  # Clean theme + no caption
+  theme_bw() +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.major.x = element_line(color = "grey70", linewidth = 0.1), 
+    panel.grid.minor.x = element_line(color = "grey90", linewidth = 0.1), 
+    panel.grid.major.y = element_line(color = "grey70", linewidth = 0.1),
+    panel.grid.minor.y = element_line(color = "grey90", linewidth = 0.1),
+    legend.position = "none"
+  ) +
+  geom_text(aes(y = 0.05, x = race_name, label = sprintf("%.2f%%", share * 100), hjust = 0, vjust = 0.5), color = "black", size = 5) # add percentage
+
+```
+
+
+```{r}
+# Side-by-side display
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+As of 2010, the population of Los Angeles County was 9,818,605. Whites were the most represented with about 50.28% of the population, or about 4,936,599 individuals. The "other" and "Asian" racial groups made up 21.8% (about 2,140,632) and 13.7% (about 1,346,865), respectively. In contrast, African Americans and Native Americans represented smaller proportions, with about 8.73% (about 856,874) and 0.7% (about 72,828) of the total population. The racial groups "of two or more races" and "Aboriginal race" were the least represented in 2010 in this county. This graph highlights the racial diversity of the county, with a strong representation of whites. This confirms the results obtained on Wikipedia.
+
+<h2> 3 All counties </h2>
+
+Map for all counties for the total population count
+
+```{r}
+map <- tm_shape(shape_us_pop_2010, projection = 2163) +
+  tm_polygons("total_pop", border.col = "gray50",
+              border.alpha = .5,palette = "YlOrBr", title = "",
+              style = "quantile", n = 8,showNA = TRUE) +
+  tm_layout(title = "Total population by County", 
+            title.position = c("center", "top"), 
+            legend.position = c("left", "bottom"), 
+            frame = FALSE,
+            legend.text.size = 0.6,   
+            legend.title.size = 0.8,  
+            inner.margins = c(0.1, 0.1, 0.05, 0.05))
+```
+
+
+```{r}
+map
+```
+
+
+The map shows the distribution of population by county in the United States, with a color gradient from light beige (lowest populations, 82 to 6,365 people) to dark brown (highest populations, 158,650 to 9,818,605 people). It can be seen that the most populous counties are concentrated mainly on the East and West coasts, in the Northeast, in Florida and around the major metropolitan areas, while the Great Plains and some mountainous areas of the West have significantly less dense populations.
+
+<h2> 4 leaflet </h2>
+
+
+```{r eval=FALSE}
+# Extract dataset for state
+body_request <- define_extract_nhgis(
+  description = "State shapefiles (2020)",
+  shapefiles = "us_state_2020_tl2020"
+)
+
+
+nhgis_ext_submitted <- submit_extract(body_request)
+
+nhgis_ext_complete <- wait_for_extract(nhgis_ext_submitted)
+
+
+## Download the dataset
+filepath <- download_extract(nhgis_ext_submitted,
+                            download_dir = "C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Data/")
+
+```
+
+
+```{r}
+# Upload data for US state
+shape_us_state <- read_ipums_sf(paste0(map_dir,"nhgis0004_shape.zip"))
+
+```
+
+
+
+```{r}
+glimpse(shape_us_state)
+```
+
+
+
+```{r}
+# 1. (Optionnel) Filtrer certains États (ici, on retire AK, HI et PR)
+shape_us_state_f <- shape_us_state %>%
+  filter(!STUSPS %in% c("AK", "HI", "PR"))
+
+# 2. Agréger la géométrie des comtés par État
+us_states <- shape_us_state_f %>%
+  group_by(NAME) %>%
+  summarise(
+    GISJOIN  = first(GISJOIN),
+    geometry = st_union(geometry)
+  )
+
+```
+
+
+
+
+
+```{r}
+# contiguous states (exclude: Alaska, Hawaii)
+#us_states %>% 
+ # mutate(STATEFP = as.integer(STATEFP)) %>%
+  #filter(STATEFP < 57) %>% 
+  #filter(!(STATEFP %in% c(2,15))) ->
+  #us_states
+
+us_states <- us_states %>% 
+  st_make_valid() 
+
+us_states <- sf::st_transform(us_states, 4326)
+us_states %>%
+  sf::st_centroid() ->
+  us_state_centroids
+```
+
+
+
+
+```{r}
+shape_us_pop_2010_la <- st_transform(shape_us_pop_2010, 4326)
+
+```
+
+
+
+```{r}
+# Define the color palette for the total population using quantiles
+pal_fun <- colorQuantile(
+  palette = "YlOrRd",
+  domain = shape_us_pop_2010_la$total_pop,
+  n = 8  # Number of quantile classes
+)
+
+# Set the popup for counties
+p_popup <- paste0(
+  "<strong>County: </strong>", shape_us_pop_2010_la$NAME, "<br>",
+  "<strong>Total Population: </strong>", shape_us_pop_2010_la$total_pop,"<br>",
+    "<strong>County ID: </strong>", shape_us_pop_2010_la$GEOID )
+```
+
+
+
+```{r}
+# Create the Leaflet Map
+us_los_angeles <- leaflet(shape_us_pop_2010_la) %>%
+  addPolygons(
+    stroke = TRUE, color = "black", opacity = 0.2, weight = 2,
+    fillColor = ~ pal_fun(total_pop),
+    fillOpacity = 1, smoothFactor = 0.5,
+    label  = ~ NAME,
+    fill   = TRUE,
+    popup = p_popup,
+    group = "County"
+  ) %>%
+  # Add caption
+  addLegend(
+    position = "bottomright",
+    pal = pal_fun,
+    values = ~total_pop,  # Only use the 'total_pop' column here
+    title = "Total Population",
+    opacity = 0.8
+  )%>%
+
+  # Layer control to toggle the display
+  addLayersControl(
+    overlayGroups = c("County", "State"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+
+
+
+```{r eval=FALSE}
+# View Map
+us_los_angeles
+```
+
+
+<img src="C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Output/leaflet_map_capture.png" alt="Total population by County" style="max-width: 100%; height: auto;">
+
+
+
+<h2> Task 4: Shiny </h2>
+
+
+
+```{r}
+ counties_WGS84 <- sf::st_transform(shape_us_pop_2010, 4326)
+```
+
+
+
+```{r eval=FALSE}
+ui <- fluidPage(
+  titlePanel("US county population in 2010"),
+  sidebarLayout(
+    sidebarPanel(
+      uiOutput("select_state"),
+      uiOutput("counties_in_state")
+    ),
+    mainPanel(
+      leafletOutput("map"),  
+      textOutput("text"),
+      plotOutput("BarPlot")
+    )
+  )
+)
+
+server <- function(input, output) {
+
+  # State Selection
+  output$select_state <- renderUI({
+    selectInput(
+      inputId = "select_state", 
+      label = "State:", 
+      choices = unique(counties_WGS84$STATE),
+      selected = 1
+    )
+  })
+
+  # County Selection in this State
+  output$counties_in_state <- renderUI({
+    req(input$select_state)  
+    selectInput(
+      inputId = "select_county", 
+      label = "County:", 
+      choices = sort(unique(counties_WGS84$NAME[counties_WGS84$STATE == input$select_state]))
+    )
+  })
+
+  # The bar plot
+  output$BarPlot <- renderPlot({
+
+    req(input$select_county)
+
+    # Filter by selected county
+    # Switch to long format
+    # Aggregate (sum) to avoid duplication (only one line per race)
+    temp_lo <- counties_WGS84 %>%
+      filter(NAME == input$select_county) %>%
+      select(GEOID, GEOGYEAR, NAME, starts_with("pop")) %>%
+      pivot_longer(
+        cols = c(pop_other, pop_native, pop_two_more, pop_black, pop_asian, pop_white),
+        names_to = "race",
+        values_to = "population"
+      ) %>%
+      group_by(race) %>% 
+      summarise(population = sum(population), .groups = "drop") %>%  
+      mutate(share = population / sum(population))
+
+    # Breed -> race_name Lookup Table
+    data_race_name_state <- data.frame(
+      race = c("pop_other", "pop_two_more", "pop_native", "pop_black", "pop_asian", "pop_white"),
+      race_name = c("other race", "two or more race", "native race", "black race", "asian race", "white race")
+    )
+
+    # Join to get the variable race_name and reorder
+    plot_data <- left_join(temp_lo, data_race_name_state, by = "race") %>%
+      mutate(
+        race_name = factor(
+          race_name,
+          levels = c("white race", "asian race", "black race", 
+                     "two or more race", "native race", "other race")
+        )
+      )
+
+    # First bar plot 
+    p1 <- ggplot(plot_data, aes(x = race_name, y = population, fill = race_name)) +
+      geom_col() +
+      labs(
+        title = paste0("County: ", input$select_county),
+        x = NULL,
+        y = "Population"
+      ) +
+      scale_fill_manual(values = c(
+        "white race"       = "#f46f63", 
+        "asian race"       = "#00b85b", 
+        "black race"       = "#af9f10", 
+        "two or more race" = "green",
+        "native race"      = "#0096b2",
+        "other race"       = "#ea65f5" 
+      )) +
+      coord_flip() +
+      theme_bw() +
+      theme(
+        axis.title.y = element_blank(),
+        axis.text.y  = element_blank(),
+        panel.grid.major.x = element_line(color = "grey70", linewidth = 0.1),
+        panel.grid.minor.x = element_line(color = "grey90", linewidth = 0.1),
+        panel.grid.major.y = element_line(color = "grey70", linewidth = 0.1),
+        panel.grid.minor.y = element_line(color = "grey90", linewidth = 0.1),
+        legend.position = "none"
+      ) +
+      geom_text(
+        aes(
+          x = race_name, 
+          y = 0.05 * max(population), 
+          label = race_name
+        ),
+        color = "black",
+        size = 5,
+        hjust = 0   # Aligns the text to the left of this point
+      )
+
+    # Second bar plot : part (pourcentage)
+    p2 <- ggplot(plot_data, aes(x = race_name, y = share, fill = race_name)) +
+      geom_col() +
+      labs(
+        title = "",
+        x = NULL,
+        y = "Population share"
+      ) +
+      scale_fill_manual(values = c(
+        "white race"       = "#f46f63",
+        "asian race"       = "#00b85b",
+        "black race"       = "#af9f10",
+        "two or more race" = "green",
+        "native race"      = "#0096b2",
+        "other race"       = "#ea65f5"
+      )) +
+      scale_y_continuous(labels = scales::percent) +
+      coord_flip() +
+      theme_bw() +
+      theme(
+        axis.title.y = element_blank(),
+        axis.text.y  = element_blank(),
+        panel.grid.major.x = element_line(color = "grey70", linewidth = 0.1),
+        panel.grid.minor.x = element_line(color = "grey90", linewidth = 0.1),
+        panel.grid.major.y = element_line(color = "grey70", linewidth = 0.1),
+        panel.grid.minor.y = element_line(color = "grey90", linewidth = 0.1),
+        legend.position = "none"
+      ) +
+      geom_text(
+        aes(
+          x = race_name,
+          y = 0.05 * max(share),
+          label = scales::percent(share)
+        ),
+        color = "black",
+        size = 5,
+        hjust = 0
+      )
+
+    gridExtra::grid.arrange(p1, p2, nrow = 1)
+  })
+  
+   output$map <- renderLeaflet({
+    bks <- mapsf::mf_get_breaks(counties_WGS84$total_pop, nbreaks = 7, breaks = "quantile")
+    pal_fun <- colorQuantile("YlOrRd", NULL, n = 7)
+    p_popup <- paste0("<strong>Total Population: </strong>", counties_WGS84$total_pop,"<br>",
+                      "<strong>County ID: </strong>", counties_WGS84$GEOID,"<br>",
+                      "<strong>County: </strong>", counties_WGS84$NAME,"<br>",
+                      "<strong>State: </strong>", counties_WGS84$STATE)
+    
+    leaflet() %>%
+      #addPolygons(data=us_states$geometry,
+                  #label = us_states$NAME,
+                 # stroke = TRUE, color="black", opacity=.2,weight=2,
+                  #group = "state") %>%
+      addPolygons(data=counties_WGS84,
+                  stroke = TRUE, color = "black", opacity = 0.2, weight = 2,
+                  fillColor = ~pal_fun(total_pop),
+                  fillOpacity = 0.8, smoothFactor = 0.5,
+                  popup = p_popup,
+                  group = "county",
+                  layerId = counties_WGS84$GEOID)%>%
+      addLabelOnlyMarkers(data = us_state_centroids$geometry,
+                          label = us_state_centroids$NAME,
+                          labelOptions = labelOptions(noHide = TRUE,
+                                                      direction = 'top', textOnly = TRUE),
+                          group = "NAME") %>%
+      addLegend("bottomright", 
+                colors = RColorBrewer::brewer.pal(7, "YlOrRd"), 
+                labels = paste0("up to ", format(bks[-1], digits = 2)),
+                title = 'Total Pop.') %>%
+      addLayersControl(overlayGroups = c("state"),baseGroups = c("county")) 
+  }) 
+  
+  observeEvent(input$map_shape_click, {
+    output$text <- renderText({paste0("county id: ",input$map_shape_click$id) })
+    # print(input$map_shape_click$id)
+    updateSelectInput(inputId = "select_county", 
+          choices=counties_WGS84$NAME[counties_WGS84$GEOID == input$map_shape_click$id])
+  }) 
+}
+
+```
+
+
+```{r eval=FALSE}
+shinyApp(ui, server)
+
+```
+
+
+<img src="C:/Users/sodji/OneDrive/Bureau/Datavis Traning/Datavis traning/Project Dataviz/Output/shiny_dashboard_pro.png" alt="Total population by County" style="max-width: 100%; height: auto;">
+
+
+
+<h2> Session Information </h2>
+
+```{r results='hide'}
+if (!require(sessioninfo)) install.packages("sessioninfo")
+
+library(sessioninfo)
+```
+
+
+
+
+```{r}
+platform_info()
+```

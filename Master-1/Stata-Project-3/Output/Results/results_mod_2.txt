@@ -1,0 +1,15 @@
+	(1)
+VARIABLES	trust_people
+	
+trust_institutions_index	-0.0462
+	(0.0419)
+growth_rate_pct	-0.00228
+	(0.00327)
+Constant	1.882***
+	(0.0959)
+	
+Observations	153
+Number of country_id	67
+R-squared	0.023
+Standard errors in parentheses	
+*** p<0.01, ** p<0.05, * p<0.1	

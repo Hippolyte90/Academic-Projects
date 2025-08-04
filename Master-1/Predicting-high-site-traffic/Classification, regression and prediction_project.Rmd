@@ -1,0 +1,871 @@
+---
+title: "Project : Classification, Regression, and Prediction"
+subtitle:  " M1 Econometrics, Statistics, Economics & Magistere 2  "
+author: |
+  <span style='font-size: 1.5em; font-weight: bold;'> Bana Nadège SABI DJESSOU    </span><br>
+  <span style='font-size: 1.5em; font-weight: bold;'> Nercy Chancelle NISABWE     </span><br>
+  <span style='font-size: 1.5em; font-weight: bold;'> Sètondji Hippolyte SODJINOU </span><br>
+date: "2025-01-10"
+output:
+  html_document:
+    df_print: paged
+---
+
+<h2> Preliminaries </h2>
+
+The data are from a website for cooking recipes. The company that owns the website wants to sell subscriptions, and the idea is that if the website receives lots of visits (so traffic is “high”) because of a posted recipe, the likelihood of a subscription sale increases.
+
+Hence the overall objective of this project is to predict which recipes will lead to high traffic.
+
+
+```{r , message=FALSE, warning=FALSE}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+
+if (!require(tidyverse))install.packages("tidyverse") 
+
+if (!require(gridExtra)) install.packages("gridExtra")
+
+if (!require(stargazer)) install.packages("stargazer")
+
+library(gridExtra) ## for: grid.arrange
+
+library(stargazer)
+
+library(tidyverse)
+
+```
+
+```{r , warning=FALSE}
+data_traffic <- read_csv("recipe_site_traffic_2212 (1).csv")
+
+```
+
+```{r , warning=FALSE}
+glimpse(data_traffic)# displaying dataset
+
+str(data_traffic$servings) # Types of dataset
+
+summary(data_traffic)
+```
+
+ <h2> 1. Recode the variables where necessary, and check the validity of the data. </h2>
+
+```{r , warning=FALSE}
+data_traffic <- data_traffic %>%
+  mutate(servings = factor(servings)) %>%
+  mutate(category = factor(category)) # code in factor
+  
+str(data_traffic)
+
+
+data_traffic_recode <- data_traffic %>%
+  mutate(high_traffic = ifelse(high_traffic == "High", 1, NA)) %>%  ## recodage
+  replace_na(list(high_traffic = 0))
+
+
+data_traffic_recode
+```
+
+We will check the data quality and the impact of missing values. The following code calculates the proportion of missing values in the dataset and displays the columns that contain them along with their respective proportions.
+
+```{r ,  warning=FALSE}
+data_traffic_recode %>%
+  summarise(across(everything() , ~ mean(is.na(.x) ) ) ) %>%
+  dplyr::select(where(~ .x > 0))
+```
+
+Now, let's drop the missing values.
+
+```{r , warning=FALSE}
+data_traffic_recode_drop_na <- drop_na(data_traffic_recode) ## drop_na allows to drop missing values
+data_traffic_recode_drop_na
+```
+
+We are going to check the presence of missing values.
+
+```{r , warning=FALSE}
+data_traffic_recode_drop_na %>%
+  summarise(across(everything() , ~ mean(is.na(.x) ) ) ) %>%
+  dplyr::select(where(~ .x > 0))
+```
+
+Number of dropped observations.
+
+```{r , warning=FALSE}
+a = nrow(data_traffic_recode) # Number of observations in the dataset with missing values
+
+b = nrow(data_traffic_recode_drop_na)# Number of observations in the dataset without missing values
+
+a - b   #  Number of observations removed with missing values
+```
+
+We have 52 observations that are removed out of 947.
+
+```{r , warning=FALSE}
+## sample selection induces no bias in outcomes
+data_traffic_recode %>%
+  count(high_traffic) %>%
+  mutate(prop = n/sum(n)) ## proportion of outcome before dropped missing values
+
+
+data_traffic_recode_drop_na %>%
+  count(high_traffic) %>%
+  mutate(prop = n/sum(n))   ## proportion of outcome before dropped missing values
+
+```
+
+Since removing the missing values does not introduce any bias into the results, we will work with the new dataset without the missing values.
+
+ <h2> 2- Exploratory Data Analysis (EDA) </h2>
+
+```{r , warning=FALSE}
+## bar plots for category
+
+##Graphique en Barres pour les Catégories
+p1 <- ggplot(data_traffic_recode_drop_na, aes(x = reorder(category, -high_traffic, FUN = mean), fill = as.factor(high_traffic))) +
+  geom_bar(position = "fill", alpha = 0.8) +
+  scale_fill_manual(
+    values = c("#0073C2FF", "#EFC000FF"),  # Couleurs professionnelles
+    name = "High Traffic",                # Titre de la légende
+    labels = c("Low", "High")             # Libellés des catégories
+  ) +
+  labs(
+    title = "High Traffic 's proportion by category",
+    x = "Category",
+    y = "Proportion"
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Centrer et styliser le titre
+    axis.text.x = element_text(size = 10),                            # Ajuster les tailles des textes
+    axis.text.y = element_text(size = 10),
+    legend.position = "top"                                           # Légende en haut
+  )
+
+
+```
+
+```{r , warning=FALSE}
+## bar plots for servings
+
+p2 <- ggplot(data_traffic_recode_drop_na, aes(x = reorder(servings, -high_traffic, FUN = mean), fill = as.factor(high_traffic))) +
+  geom_bar(position = "fill", alpha = 0.8) +
+  scale_fill_manual(
+    values = c("#0073C2FF", "#EFC000FF"),  # Professional Colors
+    name = "High Traffic",                # Legend Title
+    labels = c("Low", "High")             # Category Labels
+  ) +
+  labs(
+    title = "High Traffic 's proportion by servings ",
+    x = "servings",
+    y = "Proportion"
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),  # Center and style the title
+    axis.text.x = element_text(size = 10),                            # Adjust text sizes
+    axis.text.y = element_text(size = 10),
+    legend.position = "top"                                           # Legend at the top
+  )
+
+
+```
+
+```{r ,  warning=FALSE}
+
+## histogramme for protein
+
+p3 <- data_traffic_recode_drop_na %>%
+  ggplot(aes(x = protein, fill = factor(high_traffic))) +
+  geom_histogram(alpha = 0.6, position = "stack", bins = 20) +
+  geom_density(aes(y = after_stat(count)), alpha = 0.3, color = NA) +
+  labs(
+    title = "Protein Distribution by High Traffic",
+    x = "protein",
+    y = "Frequency",
+    fill = "High Traffic"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF"))
+
+```
+
+```{r ,warning=FALSE}
+## histogramme for sugar
+
+p4 <- data_traffic_recode_drop_na %>%
+  ggplot(aes(x = sugar, fill = factor(high_traffic))) +
+  geom_histogram(alpha = 0.6, position = "stack", bins = 20) +
+  geom_density(aes(y = after_stat(count)), alpha = 0.3, color = NA) +
+  labs(
+    title = "Sugar Distribution by High Traffic",
+    x = "sugar",
+    y = "Frequency",
+    fill = "High Traffic"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF"))
+
+```
+
+```{r , warning=FALSE}
+## histogram for carbohydrate
+
+p5 <- data_traffic_recode_drop_na %>%
+  ggplot(aes(x = carbohydrate, fill = factor(high_traffic))) +
+  geom_histogram(alpha = 0.6, position = "stack", bins = 20) +
+  geom_density(aes(y = after_stat(count)), alpha = 0.3, color = NA) +
+  labs(
+    title = "Carbohydrate Distribution by High Traffic",
+    x = "carbohydrate",
+    y = "Frequency",
+    fill = "High Traffic"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF"))
+
+
+```
+
+```{r ,  warning=FALSE}
+## histogramme for calories
+
+p6 <- data_traffic_recode_drop_na %>%
+  ggplot(aes(x = calories, fill = factor(high_traffic))) +
+  geom_histogram(alpha = 0.6, position = "stack", bins = 20) +
+  geom_density(aes(y =after_stat(count)), alpha = 0.3, color = NA) +
+  labs(
+    title = "Calories Distribution by High Traffic",
+    x = "calories",
+    y = "Frequency",
+    fill = "High Traffic"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF"))
+
+```
+
+```{r , warning=FALSE}
+## Displaying the results
+
+p1
+
+```
+
+The bar plot shows the count of recipes within each category, separated by their high-traffic status. This chart highlights a preference for certain specific categories. The categories Vegetables, Potato, and Pork are predominantly associated with high traffic, reflecting an increased consumer preference for recipes featuring these categories. In contrast, the categories Beverages, Breakfast, and Chicken Breast show a dominant proportion of low traffic, which may indicate limited demand or lower interest in these segments.
+
+```{r}
+p2
+```
+
+The bar plot shows the count of recipes within each servings, separated by their high-traffic status.This chart shows that certain specific servings sizes attract more attention. There is a clear preference for recipes sized "6 as a snack," 6, and 4 servings. Notably, recipes sized "6 as a snack" consistently generate high traffic, highlighting their strong appeal to consumers.
+
+```{r}
+grid.arrange(p3,p4,p5,p6, nrow=2)
+
+```
+
+
+The histograms for calories, carbohydrates, sugar, and protein show the distribution of these nutrients based on whether recipes are classified as high traffic (1) or low traffic (0). It appears that recipes high in protein, sugar, carbohydrates, and calories generally attract low traffic on the website, while high-traffic recipes are characterized by lower levels of these nutrients, making them more appealing to users.
+
+
+
+<h2> 3.  Splitting the data into training and test sets.</h2>
+
+```{r , warning=FALSE}
+set.seed(2453)
+tr <- sample(nrow(data_traffic_recode_drop_na), round(nrow(data_traffic_recode_drop_na) * 0.6))  ## 60/40 split train/test
+my_train_data <- data_traffic_recode_drop_na[tr, ] ## training sample
+my_test_data  <- data_traffic_recode_drop_na[-tr, ]## test sample
+
+my_train_data
+my_test_data
+```
+
+```{r , warning=FALSE}
+
+## Define the formula.
+feature_set <- names(my_train_data)
+feature_set <- feature_set[!(feature_set %in% c("recipe","high_traffic")) ]
+
+modf <- formula(paste0("high_traffic ~ ", paste(feature_set, collapse="+"))) # define the model
+modf
+summary(modf)
+```
+
+ <h2> 4- Estimate a linear probability model (LPM) and a logit model </h2>
+
+```{r , warning=FALSE}
+## Define the formula.
+feature_set <- names(my_train_data)
+feature_set <- feature_set[!(feature_set %in% c("recipe","high_traffic")) ]
+
+modf <- formula(paste0("high_traffic ~ ", paste(feature_set, collapse="+"))) # define the model
+modf
+```
+
+Linear probability model (LPM)
+
+```{r , warning=FALSE}
+# Convert   high_traffic to numeric
+
+ my_train_data$high_traffic <- as.numeric(as.character(my_train_data$high_traffic)) 
+
+#Linear probability model (LPM) fit
+
+lm.fit <- lm(modf , data=my_train_data ) 
+summary(lm.fit)
+    
+```
+
+The discrete response Logit model is $$
+E\{Y|X = x\} = \Pr\{Y = 1|X = x\} = G(\beta x)
+$$ where $G$ is the logistic distribution $G(z) = \frac{e^z}{1 + e^z}$.
+
+```{r , warning=FALSE}
+## A logit model
+glm.fit <- glm(modf, data=my_train_data, family="binomial")
+summary(glm.fit)
+
+## Displaying
+
+stargazer(lm.fit,glm.fit,
+          dep.var.caption="",dep.var.labels="",
+          omit.table.layout = "n", star.cutoffs = NA,keep.stat=c("n"),no.space=TRUE,
+          header=FALSE,
+          column.labels=c("LPM", "Logit"),
+          title="high traffic", type="text"
+)   
+```
+
+<h3> Compare the marginal effects for the two models </h3>
+
+In the linear model, the marginal effect is simply the respective coefficient, $\beta_k = \frac{dE\{Y|X=x\}}{dx_k}$. Since our GLM is non-linear, the marginal effect varies across individuals $$ \frac{dE\{Y|X = x\}}{dx_k} = \beta_k G'(\beta x) $$ with $G'(z) = e^z / (1 + e^z)^2$. In case the covariate $x_k$ is binary, the marginal effect is $G(\beta_0 + \ldots + \beta_{k-1} x_{k-1} + 1) - G(\beta_0 + \ldots + \beta_{k-1} x_{k-1} + 0)$. (You could also integrate the continuous marginal effect from 0 to 1 to get the same result.)
+
+The sign of $\beta_k$ has a clear interpretation, but not its magnitude. Since the marginal effect is now a function of the covariates, it differs between different individuals, so is difficult to report. A pragmatic solution is to evaluate this function at the mean of the covariates $\beta \bar{x}$. This can be interpreted as the marginal effect for a notional reference individual (whose characteristics are equal to the sample mean). An alternative is to report the average marginal effect $\beta_k \frac{1}{n} \sum_i G'(\beta x_i)$.
+
+```{r , message=FALSE, warning=FALSE}
+if (!require(mfx)) install.packages("mfx")
+
+library(mfx)
+
+```
+
+```{r , warning=FALSE}
+# Calculating marginal effects at the mean of the explanatory variables
+
+eff_logit_atmean <- mfx::logitmfx(modf, data=my_train_data, atmean = TRUE)
+eff_logit_atmean
+
+```
+
+```{r , warning=FALSE}
+# Calculating average marginal effects for each explanatory variable
+
+eff_logit_average <- mfx::logitmfx(modf, data=my_train_data, atmean = FALSE) #average ME
+eff_logit_average
+
+```
+
+```{r , warning=FALSE}
+# comparison
+ME <- cbind(eff_logit_atmean$mfxest[,"dF/dx"],
+            eff_logit_average$mfxest[,"dF/dx"],
+            coefficients(lm.fit)[-1])
+colnames(ME) <- c("ref person", "average", "LPM coef")
+print(ME, digits=3)
+```
+
+We observe that the signs of the marginal effects are generally consistent between the logit models ("ref person," "average") and the LPM. For example, for variables like carbohydrate, the effects are positive, while for sugar, they are negative. Moreover, only the categories Breakfast, Chicken, Chicken Breast, Dessert, Lunch/Snacks, Meat, One Dish Meal, Pork, Potato and Vegetable are significant in both models and have a positive marginal effect, thus indicating their importance in the probability of high traffic.
+
+
+
+
+<h3> The t-statistics of the estimated marginal effects </h3>
+
+<h3> Assessment of the Importance of Variables </h3>
+
+```{r , warning=FALSE}
+# Extraction of t-Statistics for Marginal Effects of the LPM
+summary(lm.fit)
+
+# variable importance: t-statistic
+temp_lpm <- summary(lm.fit) # get t-statistic
+
+varimp_lpm <- tibble(variable=rownames(temp_lpm$coefficients[-1,]), # drop Intercept
+                 score_lpm =temp_lpm$coefficients[-1,3]) %>%
+  arrange(desc(abs(score_lpm))) %>%
+  # set levels as otherwise factors generated alphabetically in ggplot
+  mutate(variable=factor(variable, levels=variable[order(abs(score_lpm))]))
+varimp_lpm
+```
+
+```{r , warning=FALSE}
+# Extraction of z-Statistics for Marginal Effects of the Logit Model
+
+summary(glm.fit)
+
+#  variable importance: t-statistic
+temp_logt <- summary(glm.fit) # get t-statistic
+
+varimp_logt <- tibble(variable=rownames(temp_logt$coefficients[-1,]), # drop Intercept
+                     score_logt =temp_logt$coefficients[-1,3]) %>%
+  arrange(desc(abs(score_logt))) %>%
+  # set levels as otherwise factors generated alphabetically in ggplot
+  mutate(variable=factor(variable, levels=variable[order(abs(score_logt))]))
+varimp_logt
+```
+
+<h3> Column plot for LPM variable importance score </h3>
+
+```{r , warning=FALSE}
+
+ggplot(varimp_lpm, aes(x=variable, y=score_lpm )) +
+  geom_col(fill = "#0073C2FF") +
+  coord_flip() +
+  theme_bw() +
+  ggtitle("variable importance: what category get more traffic ?")
+
+```
+
+<h3> Column plot for Logit variable importance score </h3>
+
+```{r ,  warning=FALSE}
+ggplot(varimp_logt, aes(x=variable, y=score_logt )) +
+  geom_col( fill = "#EFC000FF") +
+  coord_flip() +
+  theme_bw() +
+  ggtitle("variable importance: what category get more traffic ?")
+
+```
+
+```{r ,  warning=FALSE}
+# combine into one dataset
+
+var_cbine <- left_join ( varimp_lpm, varimp_logt)
+var_cbine
+
+# Column plot
+
+ggplot() +
+  geom_col(data = var_cbine, aes(x = variable, y = score_lpm, fill = "LPM"), alpha = 0.5) +
+  geom_col(data = var_cbine, aes(x = variable, y = score_logt, fill = "Logit"), alpha = 0.5) +
+  scale_fill_manual(values = c("LPM" = "#0073C2FF", "Logit" = "#EFC000FF"),
+                    name = "Références") +
+  coord_flip() +
+  labs(y = "Score", title = "variable importance: what category get more traffic ?") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme_bw()
+
+```
+
+The categories **Vegetable**, **Potato**, **Pork**, and **Lunch/Snacks** stand out as the categories with the greatest impact on recipe traffic, with high scores in both models (Logit and LPM). However, the **Vegetable** category appears to be the most significant in the linear probability model, while in the Logit model, the **Potato** category takes the lead.  
+
+**One Dish Meal**, **Meat**, and **Dessert** also have a notable but slightly lower impact. This suggests that they contribute significantly but not as much as vegetables or potatoes.  
+
+Thus, vegetables, potatoes, and pork, often served for Lunch or as Snacks (Lunch/Snacks category), bring the most traffic to the company.
+
+<h2> 5. Estimate a Random Forest (RF) model </h2>
+
+<h3> Before estimating a Random Forest model, let exam an individual tree in order to understand better the RF. </h3>
+
+```{r , message=FALSE, warning=FALSE}
+if (!require(rpart)) install.packages("rpart")
+if (!require(rpart.plot)) install.packages("rpart.plot")
+library(rpart)
+library(rpart.plot)
+```
+
+```{r , warning=FALSE}
+
+# Converting the target variable, high_traffic into a factor.
+my_train_data %>% mutate(high_traffic = factor(high_traffic,labels = c("no","yes") )) -> my_train_data_f
+
+
+trafficfit <- rpart(modf,data=my_train_data_f,method="class")
+rpart.plot(trafficfit)
+
+```
+
+```{r ,  warning=FALSE}
+trafficfit$cptable[, c("CP", "nsplit")]
+
+```
+
+```{r , warning=FALSE}
+
+rpart::plotcp(trafficfit)
+
+```
+
+```{r , warning=FALSE}
+# Find  CP optimal
+optimal_cp <- trafficfit$cptable[which.min(trafficfit$cptable[, "xerror"]), "CP"]
+
+# Pruning the tree using CP optimal
+
+trafficfit_pruned <- prune(trafficfit, cp = optimal_cp)
+
+rpart.plot(trafficfit_pruned)
+```
+
+Categories such as "Beverages, Breakfast, Chicken, Chicken Breast" strongly influence traffic, but these recipes often generate low traffic. This suggests that these categories do not meet user expectations for high traffic. Indeed, recipes in the "Beverages, Breakfast, Chicken" category have relatively low traffic (41%), while other categories achieve 59% high traffic.
+
+
+<h3> Random Forest (FR) </h3>
+
+We will use the 10-fold CV
+
+```{r , message=FALSE, warning=FALSE}
+if (!require(caret)) install.packages("caret")
+if (!require(ranger)) install.packages("ranger")
+
+library(ranger)
+library(caret)
+
+```
+
+
+```{r}
+cores <- parallel::detectCores() ## for use in: `ranger::ranger` (parallel mode)
+
+```
+
+
+```{r}
+control <- trainControl(method="cv", number=10) # 10-fold CV using caret
+
+```
+
+
+```{r , warning=FALSE}
+
+myGrid <- expand.grid(mtry = 2:6,
+             splitrule = "gini",
+             min.node.size = 1) # Minimal node size; default 1 for classification
+
+metric <- "Accuracy"  
+
+set.seed(345)
+
+# for speed:  `ranger` in parallel mode
+fit.rf_cv <- train(modf, data=my_train_data_f, method="ranger",
+                   metric=metric, trControl=control,
+                   tuneGrid = myGrid, num.threads = cores)
+```
+
+```{r , warning=FALSE}
+print(fit.rf_cv)
+```
+
+```{r , warning=FALSE}
+
+plot(fit.rf_cv)
+```
+
+```{r ,  warning=FALSE}
+fit.rf_cv$resample
+```
+
+```{r , warning=FALSE}
+fit.rf_cv$bestTune
+```
+
+```{r , warning=FALSE}
+fit.rf_cv$finalModel
+```
+
+<h3>Fit the best model</h3>
+
+```{r ,  warning=FALSE}
+## fit the best RF model (in terms of CV performance) to train data
+set.seed(345)
+rf.fit2 <- ranger::ranger(modf, data=my_train_data_f, mtry=fit.rf_cv$bestTune$mtry,
+                  importance="impurity",probability = TRUE)
+
+print(rf.fit2)
+```
+
+<h3> The variable importance scores </h3>
+
+```{r , warning=FALSE}
+varimp_rf <- tibble(Variable=names(rf.fit2$variable.importance),
+                 Importance = rf.fit2$variable.importance) %>%
+    arrange(desc(Importance)) %>%
+    mutate(Variable=factor(Variable, levels=Variable[order(Importance)]))
+print(varimp_rf)
+```
+
+```{r , warning=FALSE}
+ggplot(varimp_rf,aes(Variable, Importance)) +
+  geom_col(fill = "#0073C2FF") +
+  coord_flip() +
+  labs(x="Variable", y="Importance", title="variable importance : high or not?") +
+  theme_bw()
+```
+
+This graph indicates that the category variable is the most important for the model compared to the other variables, although protein and calories should not be overlooked either. To predict high traffic on a recipe, the category is by far the most important factor, followed by nutritional elements such as protein and calories.
+
+<h3> Prediction using your models (LPM, Logit, RF) and the test data </h3>
+
+```{r ,  warning=FALSE}
+# LPM prediction over text data
+data_check = my_test_data
+
+my_test_data$prob_lpm <- predict(lm.fit, my_test_data)
+my_test_data$class_lpm <- ifelse(my_test_data$prob_lpm > .5, 1,0)
+
+
+```
+
+```{r , warning=FALSE}
+
+# Logit prediction over text data 
+
+my_test_data$prob_logit <- predict(glm.fit, my_test_data, type = "response") # prediction for each observation into datset
+my_test_data$class_logit <- ifelse(my_test_data$prob_logit > .5, 1,0)
+
+
+```
+
+```{r , warning=FALSE}
+# RF prediction over text data 
+my_test_data$prob_rf <- predict(rf.fit2, my_test_data, type = "response")$predictions[,2]
+my_test_data$class_rf <- ifelse(my_test_data$prob_rf > 0.5, 1, 0)
+
+
+```
+
+<h3> Performance of the models with Confusion Matrix </h3>
+
+```{r , message=FALSE, warning=FALSE}
+library(dplyr)
+
+# LPM
+my_test_data %>%
+  dplyr::select(high_traffic, class_lpm, prob_lpm) %>%
+  mutate( high_traffic = factor(high_traffic,levels=c(0,1),
+                            labels = c("Not High","High")),
+          class_lpm  = factor(class_lpm,levels=c(0,1),
+                            labels = c("Not High","High"))
+          ) -> preds_lpm
+
+```
+
+Confusion Matrix of LPM
+
+```{r ,  warning=FALSE}
+# Confusion Matrix
+
+cm_lpm_caret <- caret::confusionMatrix(preds_lpm$class_lpm, preds_lpm$high_traffic)
+ cm_lpm = cm_lpm_caret$table
+prop.table(cm_lpm,margin =1)
+```
+
+```{r , warning=FALSE}
+
+# retrieve results from `cm_lpm_caret`
+c(cm_lpm_caret$overall["Accuracy"],cm_lpm_caret$byClass["Sensitivity"],
+  cm_lpm_caret$byClass["Specificity"] )
+
+```
+
+```{r , warning=FALSE}
+# Logit
+my_test_data %>%
+    dplyr::select(high_traffic,class_logit, prob_logit) %>%
+    mutate(high_traffic = factor(high_traffic,levels=c(0,1),
+                            labels = c("Not High","high_traffic")),
+          class_logit  = factor(class_logit,levels=c(0,1),
+                            labels = c("Not High","high_traffic"))
+    ) -> preds_logit
+
+
+```
+
+Confusion Matrix of Logit model
+
+```{r , warning=FALSE}
+# Confusion Matrice
+cm_logit_caret <- caret::confusionMatrix(preds_logit$class_logit, preds_logit$high_traffic)
+cm_logit = cm_logit_caret$table
+prop.table(cm_logit,margin =1)
+```
+
+```{r , warning=FALSE}
+
+# retrieve results from `cm_logit_caret`
+c(cm_logit_caret$overall["Accuracy"],cm_logit_caret$byClass["Sensitivity"],
+  cm_logit_caret$byClass["Specificity"] )
+
+```
+
+```{r ,warning=FALSE}
+# Random Forest
+my_test_data %>%
+    dplyr::select(high_traffic,class_rf, prob_rf) %>%
+    mutate(high_traffic = factor(high_traffic,levels=c(0,1),
+                            labels = c("Not High","high_traffic")),
+          class_rf  = factor(class_rf,levels=c(0,1),
+                            labels = c("Not High","high_traffic"))
+    ) -> preds_rf
+
+```
+
+Confusion Matrix of RF model
+
+```{r , warning=FALSE}
+# Confusion Matrice
+cm_rf_caret <- caret::confusionMatrix(preds_rf$class_rf, preds_rf$high_traffic)
+cm_rf = cm_rf_caret$table
+prop.table(cm_rf,margin =1)
+```
+
+```{r , warning=FALSE}
+# retrieve results from `cm_rf_caret`
+c(cm_rf_caret$overall["Accuracy"],cm_rf_caret$byClass["Sensitivity"],
+  cm_rf_caret$byClass["Specificity"] )
+
+```
+
+Let 's compare the accuracy 
+
+```{r , warning=FALSE}
+tibble(Metric="Accuracy" ,
+       LPM = cm_lpm_caret$overall["Accuracy"],
+       Logit= cm_logit_caret$overall["Accuracy"],
+       RF = cm_rf_caret$overall["Accuracy"])
+```
+
+<h3> Performance of the models with ROCs </h3>
+
+```{r , message=FALSE, warning=FALSE}
+
+if (!require(yardstick)) install.packages("yardstick")
+library(yardstick)
+
+#LPM
+roc_lpm <- yardstick::roc_curve(preds_lpm, high_traffic, prob_lpm, event_level = "second")
+roc_lpm
+```
+
+```{r , warning=FALSE}
+
+# Logit model
+roc_logit <- yardstick::roc_curve(preds_logit,high_traffic, prob_logit, event_level = "second")
+roc_logit
+```
+
+```{r , warning=FALSE}
+# RF
+roc_rf <- yardstick::roc_curve(preds_rf,high_traffic, prob_rf, event_level = "second")
+roc_rf
+```
+
+Let 's compare the ROCs
+
+```{r , warning=FALSE}
+# comparison: Logit v. LPM v. RF
+
+roc_lpm %>%
+    mutate(model="LPM") ->
+    roc_lpm
+
+
+
+roc_logit %>%
+    mutate(model="Logit") ->
+    roc_logit
+
+
+roc_rf %>%
+    mutate(model="RF") ->
+    roc_rf
+
+bind_m = bind_rows(roc_logit, roc_lpm, roc_rf)# binding three tibbles
+
+
+bind_m %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_path(linewidth = 0.8) +
+  geom_abline(lty = 3) +
+  coord_equal() +
+  theme_bw() +
+  scale_colour_manual(name="Models",values=c("Logit"="black", "LPM"="red","RF" = "blue")) +
+  theme(legend.position = "top")
+
+```
+
+ <h3> Performance of the models with AUC </h3>
+
+AUC is the area under the ROC curve.
+
+```{r , warning=FALSE}
+# LPM
+auc_lpm = yardstick::roc_auc(preds_lpm,truth = high_traffic,prob_lpm,event_level = "second")
+auc_lpm
+
+```
+
+```{r , warning=FALSE}
+# Logit model
+auc_logit = yardstick::roc_auc(preds_logit,truth = high_traffic,prob_logit,event_level = "second")
+auc_logit
+```
+
+```{r , warning=FALSE}
+# Logit model
+auc_rf = yardstick::roc_auc(preds_rf,truth = high_traffic,prob_rf,event_level = "second")
+auc_rf
+```
+
+Let 's compare the AUC
+
+```{r , warning=FALSE}
+tibble(Metric="AUC" ,
+       LPM = auc_lpm$.estimate,
+       Logit= auc_logit$.estimate,
+       RF = auc_rf$.estimate)
+```
+
+<h3> Preferred model </h3>
+
+Reminding the proportion of the classes.
+
+```{r , warning=FALSE}
+data_traffic_recode_drop_na %>%
+  count(high_traffic) %>%
+  mutate(prop = n/sum(n))
+  
+```
+
+The Logit model and the LPM have approximately the same accuracy score. However, since the class proportions are not equal, a model could achieve high accuracy simply by systematically predicting the majority class. The AUC-ROC metric allows us to compare models in terms of their ability to distinguish between classes. Therefore, we prefer the Logit model over the others because it has an AUC closest to 1.
+
+<h2> 7. Preference model interpretation </h2>
+
+The logistic model shows that food categories, particularly "Potato," "Pork," and "Lunch/Snacks," are the best predictors of site traffic, while nutritional features such as calories or sugar have a limited impact. The overall performance of the model, measured by an accuracy of 0.7541899 and an AUC-ROC of 0.8300221, indicates that it is reliable and interpretable, clearly identifying the key factors influencing traffic. 
+To increase traffic, it is recommended to create and promote more content around these three categories, optimize SEO for these categories, and adapt strategies based on seasonal trends or specific audience needs.Additionally, sharing these recipes on social media and collaborating with food influencers will boost visibility. Finally, personalized recommendations will encourage users to explore more content. These targeted actions should significantly contribute to increasing the website’s traffic.
+
+ <h2> Session Information </h2>
+
+```{r , message=FALSE, warning=FALSE}
+if (!require(sessioninfo)) install.packages("sessioninfo")
+
+library(sessioninfo)
+```
+
+```{r}
+
+platform_info()
+```
+
+```{r}
+package_info(c("tidyverse", "ranger", "stargazer",
+               "caret", "yardstick", "rpart", "rpart.plot", "mfx", "gridExtra"), dependencies=FALSE)
+```

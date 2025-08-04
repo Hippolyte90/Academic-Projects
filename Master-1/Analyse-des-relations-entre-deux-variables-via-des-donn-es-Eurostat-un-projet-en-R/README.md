@@ -1,0 +1,3 @@
+# Projet-acad-mique
+
+Ce projet académique consiste à analyser la relation entre deux variables (autres que le PIB et la satisfaction de vie) issues des données Eurostat. Il est structuré en quatre étapes principales : téléchargement et importation des données en R, nettoyage et fusion des ensembles de données, création de statistiques descriptives illustrées par des graphiques et tableaux, et enfin modélisation statistique (régression linéaire et non linéaire) pour examiner la relation entre les deux variables. Le travail finalisé doit être présenté dans un document PDF avec des visualisations pertinentes et des résultats d'analyse, sans inclure le code R ni les données brutes.

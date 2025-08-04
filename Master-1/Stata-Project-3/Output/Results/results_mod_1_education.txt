@@ -1,0 +1,16 @@
+	(1)
+VARIABLES	trust_people
+	
+trust_institutions_index	0.124***
+	(0.0280)
+growth_rate_pct	-0.000807
+	(0.00575)
+education_level	-0.0343***
+	(0.00869)
+Constant	1.632***
+	(0.0778)
+	
+Observations	153
+R-squared	0.204
+Standard errors in parentheses	
+*** p<0.01, ** p<0.05, * p<0.1	
