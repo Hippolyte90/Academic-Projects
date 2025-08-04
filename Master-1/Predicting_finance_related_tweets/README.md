@@ -10,4 +10,4 @@ Projet universitaire conduit par une équipe de 5 étudiants.
 
 🚀 Compétences acquises : fine‑tuning Transformers, optimisation hyper‑paramètres, validation croisée stratifiée, visualisation avancée & travail agile.
 
-Présentation finale le 10 avril 2025 avec rapport 2 pages et démo live. #NLP #Transformers #SentimentAnalysis #MachineLearning
+Présentation finale le 10 avril 2025 avec rapport 2 pages et démo live. 
