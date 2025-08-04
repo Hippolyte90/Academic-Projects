@@ -20,4 +20,3 @@ Spatial data wrangling │ time‑series modelling │ interactive dashboards �
 
 Result : a compact showcase of how we transform gigabytes of climate and demographic data into actionable, recruiter‑ready insights. Let’s talk if you’re looking for data talent that bridges engineering, analytics and compelling storytelling. 📩
 
-#DataScience #SpatialAnalytics #ClimateRisk #ShinyApps #Python #RStats
